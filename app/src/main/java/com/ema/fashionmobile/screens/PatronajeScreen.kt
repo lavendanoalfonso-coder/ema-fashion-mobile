@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -16,34 +18,78 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ema.fashionmobile.model.Patronaje
+import com.ema.fashionmobile.network.RetrofitClient
+import kotlinx.coroutines.launch
 
 @Composable
 fun PatronajeScreen(
     onBack: () -> Unit
 ) {
 
-    var referencia by remember {
-        mutableStateOf("")
+    var referencia by remember { mutableStateOf("") }
+    var medidasMolde by remember { mutableStateOf("") }
+    var acotaciones by remember { mutableStateOf("") }
+
+    var mensaje by remember { mutableStateOf("") }
+    var guardando by remember { mutableStateOf(false) }
+    var cargando by remember { mutableStateOf(false) }
+
+    var patronajes by remember {
+        mutableStateOf<List<Patronaje>>(emptyList())
     }
 
-    var medida by remember {
-        mutableStateOf("")
+    val scope = rememberCoroutineScope()
+
+    fun cargarPatronajes() {
+
+        scope.launch {
+
+            cargando = true
+
+            try {
+
+                val respuesta =
+                    RetrofitClient.patronajeApi.listarPatronajes()
+
+                if (respuesta.isSuccessful) {
+
+                    patronajes = respuesta.body() ?: emptyList()
+
+                } else {
+
+                    mensaje =
+                        "No se pudieron cargar los patronajes. Código: ${respuesta.code()}"
+                }
+
+            } catch (e: Exception) {
+
+                mensaje = "No se pudieron cargar los patronajes"
+
+            } finally {
+
+                cargando = false
+            }
+        }
     }
 
-    var acotaciones by remember {
-        mutableStateOf("")
+    LaunchedEffect(Unit) {
+        cargarPatronajes()
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.Top
     ) {
@@ -53,9 +99,7 @@ fun PatronajeScreen(
         ) {
 
             IconButton(
-                onClick = {
-                    onBack()
-                }
+                onClick = { onBack() }
             ) {
 
                 Icon(
@@ -71,74 +115,179 @@ fun PatronajeScreen(
             )
         }
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Registrar medidas y acotaciones del molde",
+            text = "Registrar información del molde",
             fontSize = 15.sp
         )
 
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
+        Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
             value = referencia,
-            onValueChange = {
-                referencia = it
-            },
-            label = {
-                Text("Código de referencia")
-            },
+            onValueChange = { referencia = it },
+            label = { Text("Código de referencia") },
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(12.dp)
-        )
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
-            value = medida,
-            onValueChange = {
-                medida = it
-            },
-            label = {
-                Text("Medidas del molde")
-            },
+            value = medidasMolde,
+            onValueChange = { medidasMolde = it },
+            label = { Text("Medidas del molde") },
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(12.dp)
-        )
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = acotaciones,
-            onValueChange = {
-                acotaciones = it
-            },
-            label = {
-                Text("Acotaciones")
-            },
+            onValueChange = { acotaciones = it },
+            label = { Text("Acotaciones") },
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(24.dp)
-        )
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                // Próximamente se conectará con la API.
+
+                if (
+                    referencia.isBlank() ||
+                    medidasMolde.isBlank() ||
+                    acotaciones.isBlank()
+                ) {
+
+                    mensaje = "Completa todos los campos"
+
+                } else {
+
+                    scope.launch {
+
+                        guardando = true
+                        mensaje = ""
+
+                        try {
+
+                            val patronaje = Patronaje(
+                                codigoReferencia = referencia,
+                                medidasMolde = medidasMolde,
+                                acotaciones = acotaciones
+                            )
+
+                            val respuesta =
+                                RetrofitClient.patronajeApi.crearPatronaje(patronaje)
+
+                            if (respuesta.isSuccessful) {
+
+                                mensaje =
+                                    "Patronaje guardado correctamente"
+
+                                referencia = ""
+                                medidasMolde = ""
+                                acotaciones = ""
+
+                                cargarPatronajes()
+
+                            } else {
+
+                                mensaje =
+                                    "Error al guardar. Código: ${respuesta.code()}"
+                            }
+
+                        } catch (e: Exception) {
+
+                            mensaje =
+                                "No se pudo conectar con el servidor"
+
+                        } finally {
+
+                            guardando = false
+                        }
+                    }
+                }
             },
+            enabled = !guardando,
             modifier = Modifier.fillMaxWidth()
         ) {
 
             Text(
-                text = "Guardar patronaje"
+                text = if (guardando) {
+                    "Guardando..."
+                } else {
+                    "Guardar patronaje"
+                }
             )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (mensaje.isNotEmpty()) {
+
+            Text(
+                text = mensaje,
+                fontSize = 15.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Patronajes registrados",
+            fontSize = 21.sp
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
+            onClick = {
+                cargarPatronajes()
+            },
+            enabled = !cargando,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+
+            Text(
+                text = if (cargando) {
+                    "Cargando..."
+                } else {
+                    "Actualizar lista"
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (patronajes.isEmpty()) {
+
+            Text(
+                text = "No hay patronajes registrados.",
+                fontSize = 15.sp
+            )
+
+        } else {
+
+            patronajes.forEach { patronaje ->
+
+                Text(
+                    text = "Código: ${patronaje.codigoReferencia}",
+                    fontSize = 16.sp
+                )
+
+                Text(
+                    text = "Medidas: ${patronaje.medidasMolde}",
+                    fontSize = 16.sp
+                )
+
+                Text(
+                    text = "Acotaciones: ${patronaje.acotaciones}",
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
